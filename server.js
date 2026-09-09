@@ -8,11 +8,22 @@ const port = process.env.PORT || 3000;
 const cors = require('cors');
 const db = new Database('tasks.db');
 
+const bcrypt = require('bcrypt');
+
 app.use(helmet());
 
 app.use(express.json());
 
 app.use(cors());
+
+const session = require('express-session');
+
+app.use(session({
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false
+}));
+
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS tasks (
@@ -21,14 +32,64 @@ db.exec(`
     )
         `);
 
+db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL
+)
+    
+        `);
+
+app.post('/api/register', async (req, res) => {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+        return res.status(400).json({ message: 'Логин и пароль обязательны' });
+    }
+
+    try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const stmt = db.prepare('INSERT INTO users (username, password) VALUES (?, ?)');
+        stmt.run(username, hashedPassword);
+        res.status(201).json({ message: 'Пользователь зарегистрирован' });
+    } catch (error) {
+        res.status(400).json({ message: 'Пользователь с таким именем уже существует' });
+    }
+});
+
+app.post('/api/login', async (req, res) => {
+    const { username, password } = req.body;
+
+    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+
+    if (!user) {
+        return res.status(401).json({ message: 'Неверный логин или пароль' });
+    }
+
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
+        return res.status(401).json({ message: 'Неверный логин или пароль' });
+    }
+
+    req.session.userId = user.id;
+    res.json({ message: 'Вход выполнен' });
+});
+
+function requireAuth(req, res, next) {
+    if (!req.session.userId) {
+        return res.status(401).json({ message: 'Требуется вход' });
+    }
+    next();
+}
 
 
-app.get('/api/tasks', (req, res) => {
+app.get('/api/tasks', requireAuth, (req, res) => {
     const tasks = db.prepare('SELECT * FROM tasks').all();
     res.json(tasks);
 });
 
-app.post('/api/tasks', (req, res) => {
+app.post('/api/tasks',requireAuth, (req, res) => {
     const { text } = req.body;
 
     if (!text || typeof text !== 'string' || text.trim() === '') {
@@ -44,8 +105,7 @@ app.post('/api/tasks', (req, res) => {
     }
 });
 
-
-app.delete('/api/tasks/:id', (req, res) => {
+app.delete('/api/tasks/:id', requireAuth, (req, res) => {
     const tasks = db.prepare('DELETE FROM tasks WHERE id = ?');
     tasks.run(req.params.id);
     res.json({ message: 'Задача удалена' });
