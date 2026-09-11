@@ -25,12 +25,6 @@ app.use(session({
 }));
 
 
-db.exec(`
-    CREATE TABLE IF NOT EXISTS tasks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        text TEXT NOT NULL
-    )
-        `);
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -40,6 +34,16 @@ db.exec(`
 )
     
         `);
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL,
+    user_id INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+        `);
+
 
 app.post('/api/register', async (req, res) => {
     const { username, password } = req.body;
@@ -85,20 +89,21 @@ function requireAuth(req, res, next) {
 
 
 app.get('/api/tasks', requireAuth, (req, res) => {
-    const tasks = db.prepare('SELECT * FROM tasks').all();
+    const tasks = db.prepare('SELECT * FROM tasks WHERE user_id = ?').all(req.session.userId);
     res.json(tasks);
 });
 
 app.post('/api/tasks',requireAuth, (req, res) => {
     const { text } = req.body;
+    const userId = req.session.userId;
 
     if (!text || typeof text !== 'string' || text.trim() === '') {
         return res.status(400).json({ message: 'Текст задачи обязателен' });
     }
 
     try {
-        const stmt = db.prepare('INSERT INTO tasks (text) VALUES (?)');
-        const result = stmt.run(text.trim());
+        const stmt = db.prepare('INSERT INTO tasks (text, user_id) VALUES (?, ?)');
+        const result = stmt.run(text.trim(), userId);
         res.status(201).json({ id: result.lastInsertRowid, text: text.trim() });
     } catch (error) {
         res.status(400).json({ message: 'Не удалось создать задачу' });
@@ -106,8 +111,9 @@ app.post('/api/tasks',requireAuth, (req, res) => {
 });
 
 app.delete('/api/tasks/:id', requireAuth, (req, res) => {
-    const tasks = db.prepare('DELETE FROM tasks WHERE id = ?');
-    tasks.run(req.params.id);
+    const tasks = db.prepare('DELETE FROM tasks WHERE id = ? AND user_id = ?');
+
+    tasks.run(req.params.id, req.session.userId);
     res.json({ message: 'Задача удалена' });
 });
 
