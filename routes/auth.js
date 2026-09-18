@@ -4,7 +4,7 @@ const db = require('../db');
 
 const bcrypt = require('bcrypt');
 
-router.post('/api/register', async (req, res) => {
+router.post('/api/register', async (req, res, next) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
@@ -17,7 +17,10 @@ router.post('/api/register', async (req, res) => {
         stmt.run(username, hashedPassword);
         res.status(201).json({ message: 'Пользователь зарегистрирован' });
     } catch (error) {
-        res.status(400).json({ message: 'Пользователь с таким именем уже существует' });
+        if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+            return res.status(409).json({ message: 'Пользователь с таким именем уже существует' });
+        }
+        next(error);
     }
 });
 

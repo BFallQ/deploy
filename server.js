@@ -9,7 +9,10 @@ const authRouter = require('./routes/auth');
 const tasksRouter = require('./routes/tasks');
 
 const session = require('express-session');
+const requestLogger = require('./middleware/requestLogger');
+const errorHandler = require('./middleware/errorHandler');
 
+app.use(requestLogger);
 
 app.use(helmet());
 
@@ -25,6 +28,8 @@ app.use(session({
 
 app.use(authRouter);
 app.use(tasksRouter);
+
+app.use(errorHandler);
 
 
 app.listen(port, () => {

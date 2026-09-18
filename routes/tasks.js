@@ -2,6 +2,9 @@ const db = require('../db');
 const express = require('express');
 const router = express.Router();
 const requireAuth = require('../middleware/requireAuth');
+const requestLogger = require('../middleware/requestLogger');
+
+router.use(requestLogger);
 
 
 router.get('/api/tasks', requireAuth, (req, res) => {
@@ -27,8 +30,17 @@ router.post('/api/tasks',requireAuth, (req, res) => {
 });
 
 router.delete('/api/tasks/:id', requireAuth, (req, res) => {
-    const tasks = db.prepare('DELETE FROM tasks WHERE id = ? AND user_id = ?');
+    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
 
+    if (!task) {
+        return res.status(404).json({ message: 'Задача не найдена' });
+    }
+
+    if (task.user_id !== req.session.userId) {
+        return res.status(403).json({ message: 'Нельзя удалить задачу другого пользователя' });
+    }
+
+    const tasks = db.prepare('DELETE FROM tasks WHERE id = ? AND user_id = ?');
     tasks.run(req.params.id, req.session.userId);
     res.json({ message: 'Задача удалена' });
 });
