@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const requireAuth = require('../middleware/requireAuth');
 const requestLogger = require('../middleware/requestLogger');
+const { body, validationResult } = require('express-validator');
 
 router.use(requestLogger);
 
@@ -12,14 +13,13 @@ router.get('/api/tasks', requireAuth, (req, res) => {
     res.json(tasks);
 });
 
-router.post('/api/tasks',requireAuth, (req, res) => {
+router.post('/api/tasks',requireAuth, body('text').notEmpty().withMessage('Текст обязателен').trim(), (req, res) => {
+       const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+    }
     const { text } = req.body;
     const userId = req.session.userId;
-
-    if (!text || typeof text !== 'string' || text.trim() === '') {
-        return res.status(400).json({ message: 'Текст задачи обязателен' });
-    }
-
     try {
         const stmt = db.prepare('INSERT INTO tasks (text, user_id) VALUES (?, ?)');
         const result = stmt.run(text.trim(), userId);
