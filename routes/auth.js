@@ -4,6 +4,9 @@ const db = require('../db');
 
 const bcrypt = require('bcrypt');
 
+const jwt = require('jsonwebtoken');
+
+
 router.post('/api/register', async (req, res, next) => {
     const { username, password } = req.body;
 
@@ -42,4 +45,16 @@ router.post('/api/login', async (req, res) => {
     res.json({ message: 'Вход выполнен' });
 });
 
+router.post('/api/token-login', async (req, res) => {
+    const { username, password } = req.body;
+    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+
+    if (!user) return res.status(401).json({ message: 'Неверный логин или пароль' });
+
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) return res.status(401).json({ message: 'Неверный логин или пароль' });
+
+    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    res.json({ token });
+});
 module.exports = router;
